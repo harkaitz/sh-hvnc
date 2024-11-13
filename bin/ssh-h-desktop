@@ -1,0 +1,47 @@
+#!/bin/sh -e
+##:
+#h: Usage: ssh-h-desktop [OPTS...] MACHINE tiger
+#h:
+#h: Open a desktop in a remote machine.
+##:
+ssh_h_desktop() {
+    local OPTIND optopt ssh cmd ipaddr
+    
+    ## Parse command line arguments.
+    while getopts "" optopt; do
+        case $optopt in
+            \?) return 1;;
+        esac
+    done
+    shift $(( $OPTIND - 1 ))
+    if test ! -n "$1" || test ! -n "$2"; then
+        echo >&2 "error: Please specify a machine and desktop."
+        return 1
+    fi
+    ssh="$1" cmd="$2"
+    
+    ## Get IP address.
+    case "${cmd}" in
+        tiger)
+            ipaddr="$(ssh -G gris | sed -n 's|^hostname  *||p')"
+            ;;
+    esac
+    
+    ## Connect.
+    case "${cmd}" in
+        tiger)
+            vncviewer -QualityLevel 0 -CompressLevel 9 -LowColourLevel 2 -FullScreen "${ipaddr}"
+            ;;
+        *)
+            echo >&2 "error: ${cmd}: Method not found."
+            return 1
+            ;;
+    esac
+}
+## -------------------------------------------------------------------
+if test @"${SCRNAME:-$(basename "$0")}" = @"ssh-h-desktop"; then
+    case "${1}" in
+        ''|-h|--help) sed -n 's/^ *#h: \{0,1\}//p' "$0";;
+        *)            ssh_h_desktop "$@"; exit 0;;
+    esac
+fi
