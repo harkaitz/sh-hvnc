@@ -1,8 +1,11 @@
 #!/bin/sh -e
 ##:
-#h: Usage: ssh-h-desktop [OPTS...] MACHINE tiger
+#h: Usage: ssh-h-desktop [OPTS...] SSH tiger
 #h:
-#h: Open a desktop in a remote machine.
+#h: Open a desktop in a remote machine using the SSH configurations and
+#h: tunnelings.
+#h:
+#h: - tiger : Direct tiger connection.
 ##:
 ssh_h_desktop() {
     local OPTIND optopt ssh cmd ipaddr
@@ -23,7 +26,7 @@ ssh_h_desktop() {
     ## Get IP address.
     case "${cmd}" in
         tiger)
-            ipaddr="$(ssh -G gris | sed -n 's|^hostname  *||p')"
+            ipaddr="$(ssh -G "${ssh}" | sed -n 's|^hostname  *||p')"
             ;;
     esac
     
