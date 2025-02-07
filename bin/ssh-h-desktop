@@ -5,7 +5,8 @@
 #h: Open a desktop in a remote machine using the SSH configurations and
 #h: tunnelings.
 #h:
-#h: - tiger : Direct tiger connection.
+#h:   - tiger : Direct tiger connection.
+#h:   - x11   : Execute "/etc/X11/xinit/xinitrc". (OpenBSD)
 ##:
 ssh_h_desktop() {
     local OPTIND optopt ssh cmd ipaddr
@@ -25,23 +26,94 @@ ssh_h_desktop() {
     
     ## Get IP address.
     case "${cmd}" in
-        tiger)
+        tiger-raw|tiger|fvwm|cwm|twm|xfce)
             ipaddr="$(ssh -G "${ssh}" | sed -n 's|^hostname  *||p')"
+            user="$(ssh -G "${ssh}" | sed -n 's|^user  *||p')"
             ;;
     esac
     
     ## Connect.
     case "${cmd}" in
-        tiger)
-            vncviewer -QualityLevel 0 -CompressLevel 9 -LowColourLevel 2 -FullScreen "${ipaddr}"
-            ;;
-        *)
-            echo >&2 "error: ${cmd}: Method not found."
-            return 1
-            ;;
+        tiger-raw) ssh_h_desktop_tiger_raw "${ipaddr}" ;;
+        tiger)     ssh_h_desktop_tiger "${user}@${ipaddr}" ;;
+        fvwm)      ssh_h_desktop_xinit "${user}@${ipaddr}" "env fvwm";;
+        cwm)       ssh_h_desktop_xinit "${user}@${ipaddr}" "env cwm";;
+        twm)       ssh_h_desktop_xinit "${user}@${ipaddr}" "env twm";;
+        xfce)      ssh_h_desktop_xinit "${user}@${ipaddr}" "env xfce4-session";;
+        *)         echo >&2 "error: ${cmd}: Method not found."; return 1;;
     esac
 }
-## -------------------------------------------------------------------
+ssh_h_desktop_show_variables() {
+    echo "SSH_H_DESKTOP_XRANDR : ${SSH_H_DESKTOP_XRANDR}"
+}
+ssh_h_desktop_calc_variables() {
+    SSH_H_DESKTOP_XRANDR="xrandr --output VGA-1 --right-of HDMI-1 --output HDMI-1 --auto"
+    SSH_H_DESKTOP_XSETROOT="xsetroot -solid gray10"
+    SSH_H_DESKTOP_VNCPASS="123456"
+}
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+ssh_h_desktop_tiger_raw() {
+    vncviewer -QualityLevel 0 -CompressLevel 9 -LowColourLevel 2 -FullScreen "${1}"
+}
+ssh_h_desktop_tiger() {
+    VNC_PASSWORD="${SSH_H_DESKTOP_VNCPASS}" sh -c '
+        sleep 2 >&2
+        vncviewer -QualityLevel 0 -CompressLevel 9 -LowColourLevel 2 -FullScreen -FullScreenMode all 127.0.0.1:2 >&2
+    ' | ssh -L 5902:localhost:5902 "$1" "
+        vncpasswd <<-EOF >/dev/null
+	${SSH_H_DESKTOP_VNCPASS}
+	${SSH_H_DESKTOP_VNCPASS}
+	n
+	EOF
+        vncserver :2 >&2
+        read ign
+    "
+}
+ssh_h_desktop_xinit() {
+    local ssh="$1"
+    shift
+    echo "Log to /var/log/ssh-h-desktop.log ..."
+    mkdir -p ~/.log
+    sudo xinit                           \
+         /usr/bin/xterm -title "SSH Connection" -e \
+         /bin/sh -e "$0" --ssh "${HOME}" \
+         "${ssh}" "
+             ${SSH_H_DESKTOP_XSETROOT} || true
+             ${SSH_H_DESKTOP_XRANDR} || true
+             xclock() { true; }
+             xconsole() { true; }
+             fvwm() {
+                 $*
+             }
+             if test -f /etc/X11/xinit/xinitrc; then
+                 . /etc/X11/xinit/xinitrc
+             fi
+         "                         \
+         --                        \
+         "${SSH_H_DISPLAY:-:2}"
+}
+case "$1" in
+    --ssh)
+        h="$2" a=""
+        shift 2
+        if test -f "${h}/.ssh/config"; then
+            a="${a} -F ${h}/.ssh/config"
+        fi
+        if test -f "${h}/.ssh/id_rsa"; then
+            a="${a} -i ${h}/.ssh/id_rsa"
+        fi
+        if which xrdb >/dev/null 2>&1 && test -f "${h}/.Xresources"; then
+            xrdb -load "${h}/.Xresources" || true
+        fi
+        xhost +si:localuser:harkaitz >/dev/null || true
+        ssh -Y -o BatchMode=true ${a} "$@" &
+        exec sudo -u harkaitz DISPLAY="${DISPLAY}" bash -l
+        ;;
+esac
+# --------------------------------------------------------------------
+ssh_h_desktop_calc_variables
 if test @"${SCRNAME:-$(basename "$0")}" = @"ssh-h-desktop"; then
     case "${1}" in
         ''|-h|--help) sed -n 's/^ *#h: \{0,1\}//p' "$0";;
