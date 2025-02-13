@@ -1,23 +1,20 @@
 #!/bin/sh -e
 ##:
-#h: Usage: ssh-h-desktop [OPTS...] SSH tiger
+#h: Usage: ssh-h-desktop { show | SSH tiger }
 #h:
 #h: Open a desktop in a remote machine using the SSH configurations and
 #h: tunnelings.
 #h:
-#h:   - tiger : Direct tiger connection.
-#h:   - x11   : Execute "/etc/X11/xinit/xinitrc". (OpenBSD)
+#h:   - tiger-raw         : Connect by raw VNC without using an SSH tunnel.
+#h:   - tiger             : Connect by VNC with SSH tunnel.
+#h:   - fvwm|cwm|twm|xfce : X11 forwarded SSH tunnel. (OpenBSD)
+#h:
+#h: Env: SSH_H_DESKTOP_{XRANDR,XSETROOT,VNCPASS}
 ##:
 ssh_h_desktop() {
-    local OPTIND optopt ssh cmd ipaddr
+    local ssh cmd ipaddr
     
     ## Parse command line arguments.
-    while getopts "" optopt; do
-        case $optopt in
-            \?) return 1;;
-        esac
-    done
-    shift $(( $OPTIND - 1 ))
     if test ! -n "$1" || test ! -n "$2"; then
         echo >&2 "error: Please specify a machine and desktop."
         return 1
@@ -44,23 +41,25 @@ ssh_h_desktop() {
     esac
 }
 ssh_h_desktop_show_variables() {
-    echo "SSH_H_DESKTOP_XRANDR : ${SSH_H_DESKTOP_XRANDR}"
+    echo "SSH_H_DESKTOP_XRANDR   : ${SSH_H_DESKTOP_XRANDR}"
+    echo "SSH_H_DESKTOP_XSETROOT : ${SSH_H_DESKTOP_XSETROOT}"
+    echo "SSH_H_DESKTOP_VNCPASS  : ${SSH_H_DESKTOP_VNCPASS}"
 }
 ssh_h_desktop_calc_variables() {
-    SSH_H_DESKTOP_XRANDR="xrandr --output VGA-1 --right-of HDMI-1 --output HDMI-1 --auto"
-    SSH_H_DESKTOP_XSETROOT="xsetroot -solid gray10"
-    SSH_H_DESKTOP_VNCPASS="123456"
+    SSH_H_DESKTOP_XSETROOT="${SSH_H_DESKTOP_XSETROOT:-xsetroot -solid gray10}"
 }
-# --------------------------------------------------------------------
-
 # --------------------------------------------------------------------
 ssh_h_desktop_tiger_raw() {
     vncviewer -QualityLevel 0 -CompressLevel 9 -LowColourLevel 2 -FullScreen "${1}"
 }
 ssh_h_desktop_tiger() {
+    if test ! -n "${SSH_H_DESKTOP_VNCPASS}"; then
+        echo >&2 "error: Please set SSH_H_DESKTOP_VNCPASS."
+        return 1
+    fi
     VNC_PASSWORD="${SSH_H_DESKTOP_VNCPASS}" sh -c '
         sleep 2 >&2
-        vncviewer -QualityLevel 0 -CompressLevel 9 -LowColourLevel 2 -FullScreen -FullScreenMode all 127.0.0.1:2 >&2
+        vncviewer -QualityLevel 0 -CompressLevel 0 -LowColourLevel 2 -FullScreen -FullScreenMode all 127.0.0.1:2 >&2
     ' | ssh -L 5902:localhost:5902 "$1" "
         vncpasswd <<-EOF >/dev/null
 	${SSH_H_DESKTOP_VNCPASS}
